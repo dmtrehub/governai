@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Govern-AI - Valutazione delle risposte</title>
+  <!-- Font Open Sans per una migliore leggibilità -->
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Open Sans', sans-serif;
+      background-color: #E3F2FD;
+      margin: 20px;
+      max-width: 900px;
+      position: relative;
+    }
+    /* Header: titolo e loghi affiancati */
+    #header-container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    #header-container h1 {
+      margin: 0;
+      color: #0277BD;
+    }
+    #logo-container img {
+      max-height: 50px;
+      margin-left: 10px;
+    }
+    .note {
+      background-color: #BBDEFB;
+      border: 1px solid #90CAF9;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+    }
+    .question-block {
+      border: 1px solid #B3E5FC;
+      background-color: #FFFFFF;
+      padding: 15px;
+      margin-bottom: 20px;
+      border-radius: 4px;
+      box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+    }
+    .answer-block {
+      margin-left: 20px;
+      margin-top: 10px;
+      padding: 10px;
+      background-color: #F1F8E9;
+      border-radius: 4px;
+    }
+    .answer-text {
+      font-weight: bold;
+      color: #01579B;
+      display: block;
+      margin-bottom: 5px;
+    }
+    label {
+      display: inline-block;
+      width: 180px;
+      margin-bottom: 5px;
+    }
+    select {
+      width: 60px;
+      margin-right: 10px;
+    }
+    #ruolo-selezione {
+      margin-bottom: 20px;
+    }
+    /* Contenitore per "Torna all'inizio" in alto */
+    #reset-container {
+      display: none;
+      text-align: right;
+      margin-bottom: 20px;
+    }
+    #reset-container button {
+      background-color: #FFCDD2;
+      color: #000;
+      border: none;
+      padding: 8px 16px;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    #reset-container button:hover {
+      background-color: #F8BBD0;
+    }
+    button {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      margin: 4px;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Header: Titolo e loghi affiancati -->
+<div id="header-container">
+  <h1>Govern-AI - Valutazione delle risposte</h1>
+  <div id="logo-container">
+    <img src="regione_campania.png" alt="Logo Regione Campania">
+    <img src="federico_ii.png" alt="Logo Federico II">
+  </div>
+</div>
+
+<!-- Pulsante "Torna all'inizio" in alto (visibile durante il questionario) -->
+<div id="reset-container">
+  <button id="reset-button" type="button">Torna all'inizio</button>
+</div>
+
+<p>
+  Benvenuto! Questo questionario raccoglie valutazioni sulle risposte fornite da un chatbot AI.
+  Seleziona il tuo ruolo e poi clicca "Avvia Questionario" per iniziare.
+  Per ogni richiesta apparirà una domanda con tre possibili risposte.
+  Assegna un punteggio (0-5) a ciascuna risposta, valutandone <strong>Comprensibilità</strong> e <strong>Correttezza</strong>.
+</p>
+
+<!-- Nota esplicativa -->
+<div class="note">
+  <p><strong>Comprensibilità:</strong> indica quanto la risposta risulti chiara e facile da capire. 0 = per nulla chiara, 5 = estremamente chiara.</p>
+  <p><strong>Correttezza:</strong> indica quanto la risposta sia accurata e pertinente rispetto alla domanda. 0 = non corretta, 5 = perfettamente corretta.</p>
+</div>
+
+<!-- Contenitore per selezione ruolo e avvio questionario -->
+<div id="start-container">
+  <label for="ruolo">Il tuo ruolo:</label>
+  <select id="ruolo-selezione" name="ruolo">
+    <option value="">-- Seleziona --</option>
+    <option value="AMP">Staff Politiche Regionali</option>
+    <option value="AE">Operatore/docente CPIA</option>
+    <option value="SIN">Sindacalista</option>
+    <option value="ATS">Operatore di Ambito Territoriale Sociale</option>
+    <option value="program management">Program Management</option>
+  </select>
+  <button id="start-button" type="button">Avvia Questionario</button>
+</div>
+
+<!-- Dove appariranno le domande -->
+<form id="questionario"></form>
+
+<!-- Papa Parse (CDN) per leggere il CSV -->
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
+<script>
+  // Funzione per randomizzare un array (Fisher-Yates)
+  function shuffle(array) {
+    let currentIndex = array.length, randomIndex;
+    while (currentIndex !== 0) {
+      randomIndex = Math.floor(Math.random() * currentIndex);
+      currentIndex--;
+      [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+    }
+    return array;
+  }
+
+  // Variabili globali per i dati e per memorizzare le risposte
+  let dataset = [];
+  let filteredData = [];
+  let currentIndex = 0;
+  // Array per salvare le risposte per ogni domanda:
+  // Ogni elemento: { id: "1", compr: [val, val, val], corr: [val, val, val] }
+  let answers = [];
+
+  // Riferimenti agli elementi HTML
+  const ruoloSelect = document.getElementById('ruolo-selezione');
+  const startButton = document.getElementById('start-button');
+  const questionarioForm = document.getElementById('questionario');
+  const startContainer = document.getElementById('start-container');
+  const resetContainer = document.getElementById('reset-container');
+  const resetButton = document.getElementById('reset-button');
+
+  // 1. Carica il CSV "dati_nuovo.csv"
+  Papa.parse('dati_nuovo.csv', {
+    download: true,
+    header: true,
+    delimiter: ";",
+    complete: function(results) {
+      dataset = results.data;
+      console.log("CSV caricato, righe:", dataset.length);
+      console.log("Prima riga dataset:", dataset[0]);
+    },
+    error: function(err) {
+      console.error("Errore nel caricamento CSV:", err);
+    }
+  });
+
+  // 2. Avvia il questionario al clic del pulsante
+  startButton.addEventListener('click', () => {
+    const ruolo = ruoloSelect.value.trim();
+    if (!ruolo) {
+      alert("Per favore seleziona un ruolo.");
+      return;
+    }
+    if (ruolo === "program management") {
+      filteredData = shuffle(dataset.slice());
+    } else {
+      filteredData = dataset.filter(r => r.target && r.target.trim() === ruolo);
+    }
+    currentIndex = 0;
+    answers = []; // Inizializza le risposte
+    console.log("Record filtrati per ruolo", ruolo, ":", filteredData.length);
+    startContainer.style.display = "none";
+    resetContainer.style.display = "block";
+    mostraDomanda(currentIndex);
+  });
+
+  // Funzione per resettare il questionario (tornare all'inizio)
+  function resetQuestionario() {
+    filteredData = [];
+    currentIndex = 0;
+    answers = [];
+    questionarioForm.innerHTML = "";
+    startContainer.style.display = "block";
+    resetContainer.style.display = "none";
+  }
+
+  resetButton.addEventListener('click', resetQuestionario);
+
+  // Funzione per salvare le risposte della domanda corrente
+  function saveCurrentAnswers() {
+    const currentQuestion = filteredData[currentIndex];
+    if (!answers[currentIndex]) {
+      answers[currentIndex] = { id: currentQuestion.id, compr: [], corr: [] };
+    }
+    for (let i = 0; i < 3; i++) {
+      const compSel = document.getElementById(`compr_${currentQuestion.id}_${i}`);
+      const corrSel = document.getElementById(`corr_${currentQuestion.id}_${i}`);
+      answers[currentIndex].compr[i] = compSel ? compSel.value : "";
+      answers[currentIndex].corr[i] = corrSel ? corrSel.value : "";
+    }
+    console.log("Salvate risposte per domanda", currentIndex, ":", answers[currentIndex]);
+  }
+
+  // Funzione per inviare la risposta della domanda corrente al backend
+function sendAnswer(index) {
+  const currentQuestion = filteredData[index];
+  if (!answers[index]) return;
+  const payload = {
+    role: ruoloSelect.value.trim(),
+    responses: [{
+      id: currentQuestion.id,
+      compr: answers[index].compr,
+      corr: answers[index].corr,
+      timestamp: new Date().toISOString()
+    }]
+  };
+  console.log("Invio risposta per domanda", index, ":", payload);
+  fetch("https://script.google.com/macros/s/AKfycbzsm9hF6qHw9AvkH90zxUeaigBDov9jlfjb2-qubswP7oxJD9e0nP2HDdPpT7EBa__O/exec", {
+    method: "POST",
+    mode: "no-cors",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  })
+  .then(response => {
+    console.log("Richiesta inviata (no-cors)");
+  })
+  .catch(error => {
+    console.error("Errore di connessione per domanda", index, ":", error);
+  });
+}
+
+  // Funzione per mostrare una domanda, precompilando se già salvata
+  function mostraDomanda(index) {
+    questionarioForm.innerHTML = "";
+
+    if (index < 0 || index >= filteredData.length) {
+      const completeMsg = document.createElement('p');
+      completeMsg.textContent = "Hai completato il questionario.";
+      questionarioForm.appendChild(completeMsg);
+
+      const submitBtn = document.createElement('button');
+      submitBtn.type = "button";
+      submitBtn.textContent = "Invia Tutte le Risposte (Aggiornamento)";
+      submitBtn.addEventListener('click', () => {
+        for (let i = 0; i < answers.length; i++) {
+          sendAnswer(i);
+        }
+        alert("Risposte inviate!");
+      });
+      questionarioForm.appendChild(submitBtn);
+      return;
+    }
+
+    const riga = filteredData[index];
+    const questionBlock = document.createElement('div');
+    questionBlock.className = 'question-block';
+
+    const domandaElem = document.createElement('h2');
+    domandaElem.textContent = `(${riga.id}) - ${riga.domanda}`;
+    questionBlock.appendChild(domandaElem);
+
+    const risposte = [
+      { label: 'Risposta I', key: 'risposta_i' },
+      { label: 'Risposta II', key: 'risposta_ii' },
+      { label: 'Risposta III', key: 'risposta_iii' }
+    ];
+
+    risposte.forEach((obj, i) => {
+      const answerBlock = document.createElement('div');
+      answerBlock.className = 'answer-block';
+
+      const answerText = document.createElement('span');
+      answerText.className = 'answer-text';
+      answerText.textContent = `${obj.label}: ${riga[obj.key]}`;
+      answerBlock.appendChild(answerText);
+
+      const comprDiv = document.createElement('div');
+      comprDiv.style.marginBottom = "10px";
+      const labelCompr = document.createElement('label');
+      labelCompr.setAttribute('for', `compr_${riga.id}_${i}`);
+      labelCompr.textContent = 'Comprensibilità (0-5):';
+      comprDiv.appendChild(labelCompr);
+
+      const comprSelect = document.createElement('select');
+      comprSelect.name = `compr_${riga.id}_${i}`;
+      comprSelect.id = `compr_${riga.id}_${i}`;
+      comprSelect.className = "rating-select";
+      const defaultOpt1 = document.createElement('option');
+      defaultOpt1.value = "";
+      defaultOpt1.textContent = "--";
+      defaultOpt1.disabled = true;
+      defaultOpt1.selected = true;
+      comprSelect.appendChild(defaultOpt1);
+      for (let v = 0; v <= 5; v++) {
+        const opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = v;
+        comprSelect.appendChild(opt);
+      }
+      comprDiv.appendChild(comprSelect);
+      answerBlock.appendChild(comprDiv);
+
+      const corrDiv = document.createElement('div');
+      corrDiv.style.marginBottom = "10px";
+      const labelCorr = document.createElement('label');
+      labelCorr.setAttribute('for', `corr_${riga.id}_${i}`);
+      labelCorr.textContent = 'Correttezza (0-5):';
+      corrDiv.appendChild(labelCorr);
+
+      const corrSelect = document.createElement('select');
+      corrSelect.name = `corr_${riga.id}_${i}`;
+      corrSelect.id = `corr_${riga.id}_${i}`;
+      corrSelect.className = "rating-select";
+      const defaultOpt2 = document.createElement('option');
+      defaultOpt2.value = "";
+      defaultOpt2.textContent = "--";
+      defaultOpt2.disabled = true;
+      defaultOpt2.selected = true;
+      corrSelect.appendChild(defaultOpt2);
+      for (let v = 0; v <= 5; v++) {
+        const opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = v;
+        corrSelect.appendChild(opt);
+      }
+      corrDiv.appendChild(corrSelect);
+      answerBlock.appendChild(corrDiv);
+
+      questionBlock.appendChild(answerBlock);
+    });
+
+    questionarioForm.appendChild(questionBlock);
+
+    // Precompila i campi se sono già state salvate risposte
+    if (answers[index]) {
+      for (let i = 0; i < 3; i++) {
+        const compSel = document.getElementById(`compr_${riga.id}_${i}`);
+        const corrSel = document.getElementById(`corr_${riga.id}_${i}`);
+        if (answers[index].compr[i] !== undefined) {
+          compSel.value = answers[index].compr[i];
+        }
+        if (answers[index].corr[i] !== undefined) {
+          corrSel.value = answers[index].corr[i];
+        }
+      }
+    }
+
+    const navDiv = document.createElement('div');
+    navDiv.style.marginTop = "20px";
+
+    if (index > 0) {
+      const prevBtn = document.createElement('button');
+      prevBtn.type = "button";
+      prevBtn.textContent = "Precedente";
+      prevBtn.addEventListener('click', () => {
+        saveCurrentAnswers();
+        currentIndex--;
+        mostraDomanda(currentIndex);
+      });
+      navDiv.appendChild(prevBtn);
+    }
+
+    if (index < filteredData.length - 1) {
+      const nextBtn = document.createElement('button');
+      nextBtn.type = "button";
+      nextBtn.textContent = "Successiva";
+      nextBtn.style.marginLeft = "10px";
+      nextBtn.addEventListener('click', () => {
+        const currentSelects = questionBlock.querySelectorAll('.rating-select');
+        let allFilled = true;
+        currentSelects.forEach(sel => {
+          if (sel.value === "") {
+            allFilled = false;
+            sel.style.border = "2px solid red";
+          } else {
+            sel.style.border = "";
+          }
+        });
+        if (!allFilled) {
+          alert("Per favore, assegna un punteggio a tutti i criteri prima di procedere.");
+          return;
+        }
+        saveCurrentAnswers();
+        sendAnswer(currentIndex);
+        currentIndex++;
+        mostraDomanda(currentIndex);
+      });
+      navDiv.appendChild(nextBtn);
+    } else {
+      const finishMsg = document.createElement('p');
+      finishMsg.textContent = "Hai completato il questionario.";
+      navDiv.appendChild(finishMsg);
+
+      saveCurrentAnswers();
+      sendAnswer(currentIndex);
+
+      const submitBtn = document.createElement('button');
+      submitBtn.type = "button";
+      submitBtn.textContent = "Invia Tutte le Risposte (Aggiornamento)";
+      submitBtn.addEventListener('click', () => {
+        for (let i = 0; i < answers.length; i++) {
+          sendAnswer(i);
+        }
+        alert("Risposte inviate!");
+      });
+      navDiv.appendChild(submitBtn);
+    }
+
+    questionarioForm.appendChild(navDiv);
+  }
+</script>
+
+</body>
+</html>
